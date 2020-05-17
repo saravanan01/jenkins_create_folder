@@ -11,8 +11,8 @@ TIMEOUT_HTTP = 10  # http call timeout in secs
 FARM_LIST = {'local': 'http://localhost:8080/'}
 
 PERMISSION_LIST = {
-    "build": 'hudson.model.Item.Build',
-    "create": 'hudson.model.Item.Create'
+    "build": ['hudson.model.Item.Build'],
+    "devA":  ['hudson.model.Item.Create', 'hudson.model.Item.Build']
 }
 
 
@@ -20,6 +20,7 @@ def parse_arguments(arguments):
     parser = argparse.ArgumentParser()
     parser.add_argument('--farm', help="Jenkins farm name", type=str, required=True)
     parser.add_argument('--folder', help="Folder name to create", type=str, required=True)
+    parser.add_argument('--folder_path', help="Folder path for new folder", type=str, required=False, default='/')
     parser.add_argument('--user', help="User on farm to grant access", type=str, required=True)
     parser.add_argument('--permission', help="Permission(s) for user csv.", type=str, required=True)
     args = parser.parse_args(arguments)
@@ -39,18 +40,19 @@ def validate_and_get_permission(permission_csv, user_csv):
     perms = permission_csv.split(',')
     users = user_csv.split(',')
     for user in users:
-        for p in perms:
-            if p in PERMISSION_LIST.keys():
-                jenkins_perms.append("{}:{}".format(PERMISSION_LIST[p], user))
+        for grp in perms:
+            if grp in PERMISSION_LIST.keys():
+                for permz in PERMISSION_LIST[grp]:
+                    jenkins_perms.append("{}:{}".format(permz, user))
             else:
                 print("Unknown permission '{}' skipping it.".format(p))
     return jenkins_perms
 
 
-def jenkins_call_get_config_file(url, auth_value, file_name):
+def jenkins_call_get_config_file(url, auth_value, file_name, folder_path='/'):
     temp_folder_name = "temp_folder_DELETE_THIS"
     resp = requests.post(
-        "{}/createItem".format(url),
+        "{}/{}/createItem".format(url, folder_path),
         params={"name": temp_folder_name, "mode": "com.cloudbees.hudson.plugins.folder.Folder"},
         headers={'Content-Type': 'application/x-www-form-urlencoded'},
         auth=auth_value,
@@ -59,7 +61,7 @@ def jenkins_call_get_config_file(url, auth_value, file_name):
         print("failed to connect to jenkins. status code: " + str(resp.status_code))
         raise IOError
     resp = requests.get(
-        "{}/job/{}/config.xml".format(url, temp_folder_name),
+        "{}/{}/job/{}/config.xml".format(url, folder_path, temp_folder_name),
         auth=auth_value,
         timeout=TIMEOUT_HTTP)
     if resp.status_code != 200:
@@ -70,19 +72,19 @@ def jenkins_call_get_config_file(url, auth_value, file_name):
             f.write(resp.content)
     # print("trying to deleting temp folder")
     resp = requests.post(
-        "{}job/{}/doDelete".format(url, temp_folder_name),
+        "{}/{}job/{}/doDelete".format(url, folder_path, temp_folder_name),
         auth=auth_value,
         timeout=TIMEOUT_HTTP)
     if resp.status_code != 200:
         print("Failed to delete temp folder.")
 
 
-def jenkins_call_create_folder(url, folder_name, template_file, auth_value, permission_to_add):
+def jenkins_call_create_folder(url, folder_name, template_file, auth_value, permission_to_add, folder_path='/'):
     print("creating folder...")
     xml_payload = build_payload_xml(permission_to_add, template_file)
 
     resp = requests.post(
-        "{}/createItem".format(url),
+        "{}/{}/createItem".format(url,folder_path),
         params={"name": folder_name},
         data=xml_payload,
         headers={'Content-Type': 'application/xml'},
@@ -125,8 +127,8 @@ if __name__ == '__main__':
         # print(jenkins_perms)
         jenkins_url = FARM_LIST.get(args.farm)
         auth = HTTPBasicAuth(os.environ.get('JENKINS_API_USER'), os.environ.get('JENKINS_API_TOKEN'))
-        jenkins_call_get_config_file(jenkins_url, auth, tmp_file_name)
-        jenkins_call_create_folder(jenkins_url, args.folder, tmp_file_name, auth, jenkins_perms)
+        jenkins_call_get_config_file(jenkins_url, auth, tmp_file_name, args.folder_path)
+        jenkins_call_create_folder(jenkins_url, args.folder, tmp_file_name, auth, jenkins_perms, args.folder_path)
         os.remove(tmp_file_name)
     except:
         try:
