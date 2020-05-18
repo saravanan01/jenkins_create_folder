@@ -10,6 +10,7 @@ pipeline {
       string defaultValue: '', description: 'Folder name (to be created).', name: 'J_FOLDER_NAME', trim: true
       string defaultValue: '', description: 'User(s) to grant access (CSV)', name: 'J_USER_LIST', trim: true
       string defaultValue: '', description: 'Permission(s) list (CSV)', name: 'J_PERMISSION_LIST', trim: true
+      string defaultValue: '/', description: 'Folder path to create new folder.', name: 'J_FOLDER_PATH', trim: true
     }
   agent any
   stages {
@@ -61,7 +62,8 @@ def run_shell_script() {
      --farm $J_FARM_NAME \
      --folder $params.J_FOLDER_NAME \
      --user $params.J_USER_LIST \
-     --permission $params.J_PERMISSION_LIST
+     --permission $params.J_PERMISSION_LIST \
+     --folder_path $params.J_FOLDER_PATH
      """
     result = sh (script: shTxt, returnStdout: true)
     return result
