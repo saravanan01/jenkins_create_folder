@@ -12,7 +12,8 @@ FARM_LIST = {'local': 'http://localhost:8080/'}
 
 PERMISSION_LIST = {
     "build": ['hudson.model.Item.Build'],
-    "devA":  ['hudson.model.Item.Create', 'hudson.model.Item.Build']
+    "devA": ['hudson.model.Item.Create', 'hudson.model.Item.Build'],
+    "devB": ['hudson.model.Item.Delete', 'hudson.model.Item.Build']
 }
 
 
@@ -82,9 +83,10 @@ def jenkins_call_get_config_file(url, auth_value, file_name, folder_path='/'):
 def jenkins_call_create_folder(url, folder_name, template_file, auth_value, permission_to_add, folder_path='/'):
     print("creating folder...")
     xml_payload = build_payload_xml(permission_to_add, template_file)
+    print(xml_payload)
 
     resp = requests.post(
-        "{}/{}/createItem".format(url,folder_path),
+        "{}/{}/createItem".format(url, folder_path),
         params={"name": folder_name},
         data=xml_payload,
         headers={'Content-Type': 'application/xml'},
@@ -98,6 +100,23 @@ def jenkins_call_create_folder(url, folder_name, template_file, auth_value, perm
             print("Failed to create folder. Status" + str(resp.status_code))
     else:
         print("Success: Folder created.")
+
+
+def jenkins_call_check_folder_exist_and_get_config(url, auth_value, folder_name_to_create, path_to_folder_to_create,
+                                                   tmp_file_name):
+    resp = requests.get(
+        "{}/{}/job/{}/config.xml".format(url, path_to_folder_to_create, folder_name_to_create),
+        auth=auth_value,
+        timeout=TIMEOUT_HTTP)
+    if resp.status_code == 404:
+        print("Folder doesn't exist.")
+        return False
+    elif resp.status_code == 200:
+        with open(tmp_file_name, 'wb') as f:
+            f.write(resp.content)
+        return True
+    print("Unknown error in checking folder exist: Status code: " + str(resp.status_code))
+    raise IOError
 
 
 def build_payload_xml(permission_to_add, template_file):
@@ -116,6 +135,40 @@ def build_payload_xml(permission_to_add, template_file):
     return ET.tostring(root)
 
 
+def build_update_payload_xml(permission_to_add, template_file):
+    tree = ET.parse(template_file)
+    root = tree.getroot()
+    auth_mat = root.find('properties/com.cloudbees.hudson.plugins.folder.properties.AuthorizationMatrixProperty')
+    if auth_mat is None:
+        folder_props = root.find('properties')
+        auth_mat = folder_props.makeelement('com.cloudbees.hudson.plugins.folder.properties.AuthorizationMatrixProperty'
+                                            , {})
+        folder_props.append(auth_mat)
+        inheritance_strategy = auth_mat.makeelement('inheritanceStrategy', {
+            "class": "org.jenkinsci.plugins.matrixauth.inheritance.InheritParentStrategy"})
+        auth_mat.append(inheritance_strategy)
+    for perm in permission_to_add:
+        perm_element = ET.SubElement(auth_mat, 'permission', {})
+        perm_element.text = perm
+    return ET.tostring(root)
+
+
+def jenkins_call_update_folder(url, auth_value, path_to_folder, folder_name_to_update, existing_file_name,
+                               permission_to_add):
+    print("updating folder...")
+    xml_payload = build_update_payload_xml(permission_to_add, existing_file_name)
+    resp = requests.post(
+        "{}/{}/job/{}/config.xml".format(url, path_to_folder, folder_name_to_update),
+        data=xml_payload,
+        headers={'Content-Type': 'application/xml'},
+        auth=auth_value,
+        timeout=TIMEOUT_HTTP)
+    if resp.status_code != 200:
+        print("Failed to update folder. Status" + str(resp.status_code))
+    else:
+        print("Success: Folder updated.")
+
+
 if __name__ == '__main__':
     tmp_file_name = 'folder_config_template.xml'
     try:
@@ -125,10 +178,19 @@ if __name__ == '__main__':
 
         jenkins_perms = validate_and_get_permission(args.permission, args.user)
         # print(jenkins_perms)
+        folder_name_to_create = args.folder
+        path_to_folder_to_create = args.folder_path
         jenkins_url = FARM_LIST.get(args.farm)
         auth = HTTPBasicAuth(os.environ.get('JENKINS_API_USER'), os.environ.get('JENKINS_API_TOKEN'))
-        jenkins_call_get_config_file(jenkins_url, auth, tmp_file_name, args.folder_path)
-        jenkins_call_create_folder(jenkins_url, args.folder, tmp_file_name, auth, jenkins_perms, args.folder_path)
+        folderExist = jenkins_call_check_folder_exist_and_get_config(jenkins_url, auth, folder_name_to_create,
+                                                                     path_to_folder_to_create, tmp_file_name)
+        if folderExist:
+            jenkins_call_update_folder(jenkins_url, auth, path_to_folder_to_create, folder_name_to_create,
+                                       tmp_file_name, jenkins_perms)
+        else:
+            jenkins_call_get_config_file(jenkins_url, auth, tmp_file_name, path_to_folder_to_create)
+            jenkins_call_create_folder(jenkins_url, folder_name_to_create, tmp_file_name, auth, jenkins_perms,
+                                       path_to_folder_to_create)
         os.remove(tmp_file_name)
     except:
         try:

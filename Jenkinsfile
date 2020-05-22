@@ -7,10 +7,9 @@ def FARM_LIST_CREDS = [
 pipeline {
   parameters {
       string defaultValue: '', description: 'Jenkins farm name.', name: 'J_FARM_NAME', trim: true
-      string defaultValue: '', description: 'Folder name (to be created).', name: 'J_FOLDER_NAME', trim: true
+      string defaultValue: '', description: 'Folder name (to be created full path).', name: 'J_FOLDER_NAME', trim: true
       string defaultValue: '', description: 'User(s) to grant access (CSV)', name: 'J_USER_LIST', trim: true
       string defaultValue: '', description: 'Permission(s) list (CSV)', name: 'J_PERMISSION_LIST', trim: true
-      string defaultValue: '/', description: 'Folder path to create new folder.', name: 'J_FOLDER_PATH', trim: true
     }
   agent any
   stages {
@@ -44,7 +43,7 @@ pipeline {
     }
     stage('validate result') {
       when {
-        expression { return !(result =~ /Success: Folder created./) }
+        expression { return !(result =~ /Success: Folder created\/updated/) }
       }
       steps {
         error("Creating folder failed...")
@@ -56,14 +55,15 @@ pipeline {
 def run_shell_script() {
     shTxt = """
     #!/usr/bin/env bash
-    python3 -m pip install --upgrade pipenv
-    pipenv install
-    pipenv run python createFolder.py \
+    python3 -m venv env
+    source env/bin/activate
+    pip install python-jenkins==1.7.0
+
+    python createFolderv2.py \
      --farm $J_FARM_NAME \
      --folder $params.J_FOLDER_NAME \
      --user $params.J_USER_LIST \
-     --permission $params.J_PERMISSION_LIST \
-     --folder_path $params.J_FOLDER_PATH
+     --permission $params.J_PERMISSION_LIST
      """
     result = sh (script: shTxt, returnStdout: true)
     return result
