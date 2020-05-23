@@ -10,6 +10,7 @@ pipeline {
       string defaultValue: '', description: 'Folder name (to be created full path).', name: 'J_FOLDER_NAME', trim: true
       string defaultValue: '', description: 'User(s) to grant access (CSV)', name: 'J_USER_LIST', trim: true
       string defaultValue: '', description: 'Permission(s) list (CSV)', name: 'J_PERMISSION_LIST', trim: true
+      booleanParam defaultValue: false, description: 'Select to remove permissions defaults to false.', name: 'J_REMOVE_FLAG'
     }
   agent any
   stages {
@@ -57,13 +58,14 @@ def run_shell_script() {
     #!/usr/bin/env bash
     python3 -m venv env
     source env/bin/activate
-    pip install python-jenkins==1.7.0
+    pip install -r requirements.txt
 
     python createFolderv2.py \
      --farm $J_FARM_NAME \
      --folder $params.J_FOLDER_NAME \
      --user $params.J_USER_LIST \
-     --permission $params.J_PERMISSION_LIST
+     --permission $params.J_PERMISSION_LIST \
+     ${params.J_REMOVE_FLAG ? '--remove' : ''}
      """
     result = sh (script: shTxt, returnStdout: true)
     return result
