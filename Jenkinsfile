@@ -10,7 +10,7 @@ pipeline {
       string defaultValue: '', description: 'Folder name (to be created full path).', name: 'J_FOLDER_NAME', trim: true
       string defaultValue: '', description: 'User(s) to grant access (CSV)', name: 'J_USER_LIST', trim: true
       string defaultValue: '', description: 'Permission(s) list (CSV)', name: 'J_PERMISSION_LIST', trim: true
-      booleanParam defaultValue: false, description: 'Select to remove permissions defaults to false.', name: 'J_REMOVE_FLAG'
+      booleanParam defaultValue: false, description: 'Select to replace permissions for user defaults to false.', name: 'J_REPLACE_FLAG'
     }
   agent any
   stages {
@@ -60,12 +60,12 @@ def run_shell_script() {
     source env/bin/activate
     pip install -r requirements.txt
 
-    python createFolderv2.py \
+    python create_replace.py \
      --farm $J_FARM_NAME \
      --folder $params.J_FOLDER_NAME \
      --user $params.J_USER_LIST \
      --permission $params.J_PERMISSION_LIST \
-     ${params.J_REMOVE_FLAG ? '--remove' : ''}
+     ${params.J_REPLACE_FLAG ? '--replace' : ''}
      """
     result = sh (script: shTxt, returnStdout: true)
     return result
